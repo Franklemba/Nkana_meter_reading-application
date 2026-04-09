@@ -12,9 +12,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { useApp } from '../context/AppContext';
-import { getMySchedules, getPropertiesForSchedule } from '../services/api';
+import { ensureApiInitialized, getMySchedules, getMeterReadingSchedule, getWaterPropertiesByNames, getPropertiesForSchedule } from '../services/api';
 import { saveScheduleCache, loadScheduleCache } from '../services/storage';
-import { SCREENS } from '../navigation/AppNavigator';
+import { SCREENS } from '../navigation/screens';
 import {
   Card, SectionHeader, ProgressBar, StatusBadge,
   InfoBanner, PrimaryButton,
@@ -43,15 +43,39 @@ export default function HomeScreen({ navigation }) {
 
     setLoading(true);
     try {
+      ensureApiInitialized();
       // Try live API first
-      const schedules = await getMySchedules();
+      const schedules = await getMySchedules(state.user?.employeeId || state.user?.name);
       if (!schedules || schedules.length === 0) {
         throw new Error('No active reading schedule found for today.');
       }
       const activeSchedule = schedules[0];
       dispatch({ type: 'SET_SCHEDULE', payload: activeSchedule });
 
-      const props = await getPropertiesForSchedule(activeSchedule.schedule_code);
+      // Walk-route (authoritative): schedule.properties child table with sequence order.
+      let props = [];
+      try {
+        const schedDoc = await getMeterReadingSchedule(activeSchedule.name);
+        const routeRows = (schedDoc?.properties || [])
+          .filter(r => r?.water_property)
+          .slice()
+          .sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+
+        const orderedNames = routeRows.map(r => r.water_property);
+        const seqByName = Object.fromEntries(routeRows.map(r => [r.water_property, r.sequence || null]));
+
+        const fetched = await getWaterPropertiesByNames(orderedNames);
+        const byName = Object.fromEntries(fetched.map(p => [p.name, p]));
+
+        props = orderedNames
+          .map(name => byName[name])
+          .filter(Boolean)
+          .map(p => ({ ...p, walk_sequence: seqByName[p.name] ?? null }));
+      } catch (_) {
+        // Fallback: older endpoints/fields
+        props = await getPropertiesForSchedule(activeSchedule.schedule_code || activeSchedule.name);
+      }
+
       dispatch({ type: 'SET_PROPERTIES', payload: props });
 
       await saveScheduleCache(activeSchedule, props);

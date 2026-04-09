@@ -1,37 +1,33 @@
 // src/screens/LoginScreen.js
 // The first screen every meter reader sees.
-// Accepts the ERPNext server URL, username, and password.
-// On success: stores the session, initialises the API client, and
+// Accepts the Employee ID only.
+// ERPNext base URL + token are loaded automatically from local config / SecureStore.
+// On success: validates the Employee and navigates to Home where their schedule auto-loads.
 // navigates to Home where their schedule auto-loads.
 
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, ActivityIndicator,
-  KeyboardAvoidingView, Platform, Alert,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useApp } from '../context/AppContext';
-import { login } from '../services/api';
-import { initApi } from '../services/api';
-import { saveSession } from '../services/storage';
+import { initApi, getEmployee } from '../services/api';
+import { saveSession, loadApiToken } from '../services/storage';
 import { Colors, Typography, Spacing, Radius } from '../constants/theme';
 
 export default function LoginScreen() {
   const { dispatch } = useApp();
 
-  const [baseUrl, setBaseUrl] = useState('https://erp.example.com');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPass, setShowPass] = useState(false);
+  const [employeeId, setEmployeeId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   async function handleLogin() {
-    if (!baseUrl.trim() || !username.trim() || !password.trim()) {
-      setError('Please fill in all fields.');
+    if (!employeeId.trim()) {
+      setError('Please enter your Employee ID.');
       return;
     }
 
@@ -39,23 +35,40 @@ export default function LoginScreen() {
     setError('');
 
     try {
-      // 1. Authenticate against Frappe
-      const result = await login({ baseUrl: baseUrl.trim(), username: username.trim(), password });
+      const baseUrl = (process.env.EXPO_PUBLIC_ERP_BASE_URL || '').trim();
+      const tokenFromEnv = (process.env.EXPO_PUBLIC_ERP_TOKEN || '').trim(); // "<api_key>:<api_secret>"
+      const tokenFromSecureStore = (await loadApiToken())?.trim?.() || '';
+      const token = tokenFromEnv || tokenFromSecureStore;
+
+      if (!baseUrl) {
+        throw new Error('Missing ERP base URL. Set EXPO_PUBLIC_ERP_BASE_URL in your .env file.');
+      }
+      if (!token) {
+        throw new Error('Missing ERP API token. Set EXPO_PUBLIC_ERP_TOKEN in your .env file.');
+      }
+
+      // 1) Init API and validate Employee
+      initApi({ baseUrl, token });
+      const employee = await getEmployee(employeeId.trim());
+      if (!employee?.name) throw new Error('Employee not found.');
+      if (employee?.status && employee.status !== 'Active') {
+        throw new Error(`Employee is not Active (status: ${employee.status}).`);
+      }
 
       // 2. Build session object
       const session = {
         user: {
-          name: username.trim(),
-          full_name: result.full_name || username.trim(),
-          user_image: result.home_page || null,
+          name: employee.name,
+          full_name: employee.employee_name || employee.name,
+          user_image: null,
         },
-        token: null,   // Using session cookie; swap for api_key:api_secret if needed
-        baseUrl: baseUrl.trim(),
+        employeeId: employee.name,
+        token: null, // token stored in SecureStore, not AsyncStorage
+        baseUrl,
       };
 
-      // 3. Persist session + initialise API client
+      // 3. Persist session
       await saveSession(session);
-      initApi({ baseUrl: baseUrl.trim(), token: null });
 
       // 4. Update global state → navigation switches to AppStack automatically
       dispatch({ type: 'SET_USER', payload: session });
@@ -64,7 +77,7 @@ export default function LoginScreen() {
       const msg = err?.response?.data?.message
         || err?.response?.data?.exc_type
         || err.message
-        || 'Login failed. Check your server URL and credentials.';
+        || 'Login failed. Check your Employee ID and token configuration.';
       setError(msg);
     } finally {
       setLoading(false);
@@ -95,61 +108,20 @@ export default function LoginScreen() {
 
           <Text style={styles.formTitle}>Sign in</Text>
 
-          {/* Server URL */}
+          {/* Employee ID */}
           <View style={styles.fieldWrap}>
-            <Text style={styles.label}>Server URL</Text>
+            <Text style={styles.label}>Employee ID</Text>
             <TextInput
               style={styles.input}
-              value={baseUrl}
-              onChangeText={setBaseUrl}
-              autoCapitalize="none"
-              keyboardType="url"
-              returnKeyType="next"
-              placeholder="https://41.63.62.101:8001"
-              placeholderTextColor={Colors.textDisabled}
-            />
-          </View>
-
-          {/* Username */}
-          <View style={styles.fieldWrap}>
-            <Text style={styles.label}>Username</Text>
-            <TextInput
-              style={styles.input}
-              value={username}
-              onChangeText={setUsername}
+              value={employeeId}
+              onChangeText={setEmployeeId}
               autoCapitalize="none"
               autoCorrect={false}
-              returnKeyType="next"
-              placeholder="your.name@example.com"
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
+              placeholder="NW1110"
               placeholderTextColor={Colors.textDisabled}
             />
-          </View>
-
-          {/* Password */}
-          <View style={styles.fieldWrap}>
-            <Text style={styles.label}>Password</Text>
-            <View style={styles.passWrap}>
-              <TextInput
-                style={[styles.input, styles.passInput]}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPass}
-                returnKeyType="done"
-                onSubmitEditing={handleLogin}
-                placeholder="••••••••"
-                placeholderTextColor={Colors.textDisabled}
-              />
-              <TouchableOpacity
-                style={styles.eyeBtn}
-                onPress={() => setShowPass(v => !v)}
-              >
-                <Ionicons
-                  name={showPass ? 'eye-off-outline' : 'eye-outline'}
-                  size={18}
-                  color={Colors.textSecondary}
-                />
-              </TouchableOpacity>
-            </View>
           </View>
 
           {/* Error message */}
@@ -245,19 +217,6 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     fontSize: Typography.md,
     color: Colors.textPrimary,
-  },
-  passWrap: {
-    position: 'relative',
-  },
-  passInput: {
-    paddingRight: 44,
-  },
-  eyeBtn: {
-    position: 'absolute',
-    right: Spacing.md,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
   },
   errorBanner: {
     backgroundColor: Colors.dangerLight,

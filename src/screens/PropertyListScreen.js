@@ -6,11 +6,14 @@ import React, { useState, useMemo } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, TextInput,
+  Linking,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 
 import { useApp } from '../context/AppContext';
-import { SCREENS } from '../navigation/AppNavigator';
+import { SCREENS } from '../navigation/screens';
 import { StatusBadge, Avatar, EmptyState, ProgressBar } from '../components';
 import { Colors, Typography, Spacing, Radius } from '../constants/theme';
 
@@ -28,9 +31,24 @@ export default function PropertyListScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('all');
   const [search,    setSearch]    = useState('');
 
+  // Ensure properties are ordered by walk route when available
+  const orderedProperties = useMemo(() => {
+    const list = [...properties];
+    const hasWalkSeq = list.some(p => p.walk_sequence != null);
+    if (hasWalkSeq) {
+      list.sort((a, b) => (a.walk_sequence || 0) - (b.walk_sequence || 0));
+      return list;
+    }
+    const hasRouteSeq = list.some(p => p.route_sequence != null);
+    if (hasRouteSeq) {
+      list.sort((a, b) => (a.route_sequence || 0) - (b.route_sequence || 0));
+    }
+    return list;
+  }, [properties]);
+
   // ── Filter logic ───────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    let list = [...properties];
+    let list = [...orderedProperties];
 
     // Tab filter
     if (activeTab === 'pending') list = list.filter(p => !p.reading_status || p.reading_status === 'Pending');
@@ -48,20 +66,20 @@ export default function PropertyListScreen({ navigation }) {
     }
 
     return list;
-  }, [properties, activeTab, search]);
+  }, [orderedProperties, activeTab, search]);
 
   // ── Find the first pending property (for "You are here" indicator) ─────────
-  const nextPendingIndex = properties.findIndex(
+  const nextPendingIndex = orderedProperties.findIndex(
     p => !p.reading_status || p.reading_status === 'Pending'
   );
 
   // ── Tab counts ─────────────────────────────────────────────────────────────
   const counts = useMemo(() => ({
-    all:     properties.length,
-    pending: properties.filter(p => !p.reading_status || p.reading_status === 'Pending').length,
-    done:    properties.filter(p => p.reading_status === 'Read').length,
-    unread:  properties.filter(p => p.reading_status === 'Unread').length,
-  }), [properties]);
+    all:     orderedProperties.length,
+    pending: orderedProperties.filter(p => !p.reading_status || p.reading_status === 'Pending').length,
+    done:    orderedProperties.filter(p => p.reading_status === 'Read').length,
+    unread:  orderedProperties.filter(p => p.reading_status === 'Unread').length,
+  }), [orderedProperties]);
 
   // ── Navigate to capture ────────────────────────────────────────────────────
   function openCapture(property) {
@@ -71,11 +89,42 @@ export default function PropertyListScreen({ navigation }) {
     });
   }
 
+  async function navigateToNext() {
+    const next = orderedProperties.find(p => !p.reading_status || p.reading_status === 'Pending');
+    if (!next) {
+      Alert.alert('Done', 'No pending properties left in this schedule.');
+      return;
+    }
+
+    const lat = Number(next.latitude);
+    const lng = Number(next.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      Alert.alert('No GPS on property', 'This property has no latitude/longitude saved in ERPNext.');
+      return;
+    }
+
+    // Optional: request location permission so Maps can route from current location
+    try {
+      await Location.requestForegroundPermissionsAsync();
+    } catch (_) {}
+
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=walking`;
+    const can = await Linking.canOpenURL(url);
+    if (!can) {
+      Alert.alert('Cannot open Maps', 'Google Maps directions could not be opened on this device.');
+      return;
+    }
+    await Linking.openURL(url);
+  }
+
   // ── Render a single property row ───────────────────────────────────────────
   function renderItem({ item, index }) {
-    const globalIndex = properties.findIndex(p => p.name === item.name);
+    const globalIndex = orderedProperties.findIndex(p => p.name === item.name);
     const isNext = globalIndex === nextPendingIndex;
     const status = item.reading_status?.toLowerCase() || 'pending';
+    const lat = Number(item.latitude);
+    const lng = Number(item.longitude);
+    const hasGps = Number.isFinite(lat) && Number.isFinite(lng);
 
     return (
       <TouchableOpacity
@@ -91,18 +140,18 @@ export default function PropertyListScreen({ navigation }) {
         </View>
 
         {/* Avatar */}
-        <Avatar name={item.water_customer} size={42} />
+        <Avatar name={item.water_customer || item.owner_customer || item.tenant_customer} size={42} />
 
         {/* Info */}
         <View style={styles.rowInfo}>
           <Text style={styles.customerName} numberOfLines={1}>
-            {item.water_customer || 'Unknown customer'}
+            {item.water_customer || item.owner_customer || item.tenant_customer || 'Unknown customer'}
           </Text>
           <Text style={styles.addressText} numberOfLines={1}>
             {item.property_address}
           </Text>
           <Text style={styles.propertyRef} numberOfLines={1}>
-            {item.name} · {item.meter_type}
+            {item.name} · {item.meter_type}{hasGps ? ' · GPS' : ''}
           </Text>
         </View>
 
@@ -133,6 +182,10 @@ export default function PropertyListScreen({ navigation }) {
           <Text style={styles.progressText}>
             {counts.done} of {counts.all} completed
           </Text>
+          <TouchableOpacity style={styles.navBtn} onPress={navigateToNext} activeOpacity={0.85}>
+            <Ionicons name="navigate-outline" size={16} color={Colors.white} />
+            <Text style={styles.navBtnText}>Navigate (walking) to next</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -185,6 +238,18 @@ const styles = StyleSheet.create({
   container:    { flex: 1, backgroundColor: Colors.bgTertiary },
   progressBar:  { backgroundColor: Colors.bgPrimary, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.sm },
   progressText: { fontSize: Typography.xs, color: Colors.textSecondary, marginTop: 4, textAlign: 'right' },
+  navBtn: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  navBtnText: { color: Colors.white, fontSize: Typography.sm, fontWeight: Typography.medium },
 
   searchWrap: {
     flexDirection:  'row',

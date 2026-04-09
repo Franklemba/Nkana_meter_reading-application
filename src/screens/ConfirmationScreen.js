@@ -7,7 +7,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { SCREENS } from '../navigation/AppNavigator';
+import { SCREENS } from '../navigation/screens';
 import { PrimaryButton, SecondaryButton, Card, InfoBanner } from '../components';
 import { Colors, Typography, Spacing, Radius } from '../constants/theme';
 

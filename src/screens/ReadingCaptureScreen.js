@@ -17,7 +17,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { useApp } from '../context/AppContext';
 import { getPropertyDetail, submitMeterReading } from '../services/api';
 import { enqueue } from '../services/storage';
-import { SCREENS } from '../navigation/AppNavigator';
+import { SCREENS } from '../navigation/screens';
 import {
   Card, SectionHeader, ReadonlyField, InfoBanner,
   PrimaryButton, SecondaryButton, Divider, StatusBadge, Avatar,
@@ -142,16 +142,31 @@ export default function ReadingCaptureScreen({ navigation, route }) {
   // ── Build payload matching Meter Reading doctype ───────────────────────────
   function buildPayload() {
     const today = new Date().toISOString().split('T')[0];
+    const serviceConn = property?.service_connections?.[0] || null;
+    const waterCustomer =
+      property?.water_customer ||
+      property?.owner_customer ||
+      property?.tenant_customer ||
+      '';
+    const waterMeter =
+      property?.water_meter ||
+      serviceConn?.water_meter ||
+      property?.water_meter_number ||
+      property?.meter_number ||
+      property?.meter_no ||
+      property?.meter_serial ||
+      '';
     return {
       zone:                  property.zone             || state.schedule?.zone,
       reading_schedule:      state.schedule?.name      || '',
       reading_schedule_code: state.schedule?.schedule_code || '',
       water_property:        property.name,
-      water_customer:        property.water_customer,
+      water_customer:        waterCustomer,
       property_address:      property.property_address,
-      meter_type:            property.meter_type,
-      service_connection:    property.service_connection,
-      service_type:          property.service_type,
+      water_meter:           waterMeter,
+      meter_type:            serviceConn?.meter_type || property.meter_type,
+      service_connection:    property.service_connection || serviceConn?.service_connection_id || serviceConn?.name || '',
+      service_type:          property.service_type || serviceConn?.service_type || 'Water',
       reading_date:          today,
       previous_reading:      prev,
       current_reading:       curr,
@@ -162,7 +177,8 @@ export default function ReadingCaptureScreen({ navigation, route }) {
       estimated_consumption: readingType === 'Estimated' ? parseFloat(estimatedConsumption) || 0 : 0,
       reading_latitude:      gps?.latitude,
       reading_longitude:     gps?.longitude,
-      meter_photo:           photoBase64 || '',
+      meter_photo_base64:    photoBase64 || '',
+      meter_photo_filename:  `meter_${property.name}_${Date.now()}.jpg`,
       notes,
     };
   }
@@ -211,7 +227,7 @@ export default function ReadingCaptureScreen({ navigation, route }) {
       navigation.replace(SCREENS.CONFIRMATION, {
         propertyName:    property.name,
         propertyAddress: property.property_address,
-        customerName:    property.water_customer,
+        customerName:    property.water_customer || property.owner_customer || property.tenant_customer,
         consumption,
         currentReading:  curr,
         readingOutcome,

@@ -5,6 +5,8 @@
 
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ensureApiInitialized, initApi } from '../services/api';
+import { loadApiToken } from '../services/storage';
 
 // ─── Shape of global state ────────────────────────────────────────────────────
 const initialState = {
@@ -120,6 +122,17 @@ export function AppProvider({ children }) {
         try {
           const session = JSON.parse(raw);
           dispatch({ type: 'SET_USER', payload: session });
+          // Initialize API client once we have baseUrl + token.
+          // Prefer env (.env) token; fall back to SecureStore token if present.
+          loadApiToken().then(token => {
+            const baseUrlFromEnv = (process?.env?.EXPO_PUBLIC_ERP_BASE_URL || '').trim();
+            const tokenFromEnv = (process?.env?.EXPO_PUBLIC_ERP_TOKEN || '').trim();
+            const baseUrl = baseUrlFromEnv || session?.baseUrl || '';
+            const finalToken = tokenFromEnv || token || '';
+
+            if (baseUrl && finalToken) initApi({ baseUrl, token: finalToken });
+            else ensureApiInitialized();
+          });
         } catch (_) {}
       }
     });
