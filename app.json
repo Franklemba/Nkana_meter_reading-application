@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "Water Meter App",
+    "slug": "water-meter-app",
+    "scheme": "watermeterapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#185FA5"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.lusaka.waterutility.meterreading",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Required to photograph the meter dial when capturing a reading.",
+        "NSLocationWhenInUseUsageDescription": "Required to record the GPS coordinates of the meter reading location.",
+        "NSLocationAlwaysUsageDescription": "Required to record GPS coordinates when capturing readings in the field."
+      }
+    },
+    "android": {
+      "package": "com.lusaka.waterutility.meterreading",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {},
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Water Meter App to access your camera to capture meter photos."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Water Meter App to record your location when capturing meter readings."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Water Meter App to access photos."
+        }
+      ],
+      "expo-font"
+    ]
+  }
+}
