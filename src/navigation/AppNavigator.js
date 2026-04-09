@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useApp } from '../context/AppContext';
 import { Colors, Typography, Spacing } from '../constants/theme';
+import { SCREENS } from './screens';
 
 // ─── Screen imports ───────────────────────────────────────────────────────────
 import LoginScreen        from '../screens/LoginScreen';
@@ -73,7 +74,7 @@ function SyncIcon({ navigation, pendingCount }) {
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ ...screenOptions, headerShown: false }}>
-      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name={SCREENS.LOGIN} component={LoginScreen} />
     </Stack.Navigator>
   );
 }
@@ -89,7 +90,7 @@ function AppStack() {
     <Stack.Navigator screenOptions={screenOptions}>
 
       <Stack.Screen
-        name="Home"
+        name={SCREENS.HOME}
         component={HomeScreen}
         options={({ navigation }) => ({
           title: 'My Schedule',
@@ -100,13 +101,13 @@ function AppStack() {
       />
 
       <Stack.Screen
-        name="PropertyList"
+        name={SCREENS.PROPERTY_LIST}
         component={PropertyListScreen}
         options={{ title: 'Route' }}
       />
 
       <Stack.Screen
-        name="ReadingCapture"
+        name={SCREENS.READING_CAPTURE}
         component={ReadingCaptureScreen}
         options={({ route }) => ({
           title: route.params?.propertyAddress || 'Capture reading',
@@ -115,7 +116,7 @@ function AppStack() {
       />
 
       <Stack.Screen
-        name="Confirmation"
+        name={SCREENS.CONFIRMATION}
         component={ConfirmationScreen}
         options={{
           title: 'Reading saved',
@@ -125,7 +126,7 @@ function AppStack() {
       />
 
       <Stack.Screen
-        name="SyncQueue"
+        name={SCREENS.SYNC_QUEUE}
         component={SyncQueueScreen}
         options={{ title: 'Sync queue' }}
       />
@@ -145,16 +146,6 @@ export default function AppNavigator() {
     </NavigationContainer>
   );
 }
-
-// ─── Screen name constants (import in screens to avoid typos) ─────────────────
-export const SCREENS = {
-  LOGIN:           'Login',
-  HOME:            'Home',
-  PROPERTY_LIST:   'PropertyList',
-  READING_CAPTURE: 'ReadingCapture',
-  CONFIRMATION:    'Confirmation',
-  SYNC_QUEUE:      'SyncQueue',
-};
 
 const styles = StyleSheet.create({
   syncIcon: {

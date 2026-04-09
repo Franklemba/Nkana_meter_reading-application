@@ -5,11 +5,13 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { submitMeterReading } from './api';
+import * as SecureStore from 'expo-secure-store';
 
 const QUEUE_KEY      = '@wmr_sync_queue';
 const SESSION_KEY    = '@wmr_session';
 const SCHEDULE_KEY   = '@wmr_schedule';
 const PROPERTIES_KEY = '@wmr_properties';
+const TOKEN_KEY      = '@wmr_api_token';
 
 // ─── Session persistence ──────────────────────────────────────────────────────
 
@@ -24,6 +26,20 @@ export async function loadSession() {
 
 export async function clearSession() {
   await AsyncStorage.multiRemove([SESSION_KEY, SCHEDULE_KEY, PROPERTIES_KEY]);
+  try { await SecureStore.deleteItemAsync(TOKEN_KEY); } catch (_) {}
+}
+
+export async function saveApiToken(token) {
+  // Token is sensitive; never store it in AsyncStorage.
+  await SecureStore.setItemAsync(TOKEN_KEY, token);
+}
+
+export async function loadApiToken() {
+  try {
+    return await SecureStore.getItemAsync(TOKEN_KEY);
+  } catch (_) {
+    return null;
+  }
 }
 
 // ─── Schedule + Properties cache ─────────────────────────────────────────────

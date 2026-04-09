@@ -52,7 +52,9 @@
           "photosPermission": "Allow Water Meter App to access photos."
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-secure-store",
+      "expo-sqlite"
     ]
   }
 }
