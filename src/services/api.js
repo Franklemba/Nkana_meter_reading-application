@@ -6,7 +6,7 @@ import axios from 'axios';
 
 // ─── Mock Mode Toggle ─────────────────────────────────────────────────────────
 // Set to true to simulate API responses locally.
-export const MOCK_MODE = true;
+export const MOCK_MODE = false;
 
 let _baseUrl = '';
 let _token = '';
@@ -37,10 +37,26 @@ export async function login({ baseUrl, username, password }) {
       resolve({ full_name: "Mock Reader", home_page: null });
     }, 1000));
   }
+  // Initialize base URL before attempting to log in
+  initApi({ baseUrl, token: null });
+  
+  // Using URLSearchParams helps properly format the form data for Frappe's login endpoint,
+  // which sometimes prefers x-www-form-urlencoded over raw JSON.
+  const params = new URLSearchParams();
+  params.append('usr', username);
+  params.append('pwd', password);
+
+  const response = await client().post('/api/method/login', params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  });
+  return response.data;
 }
 
 export async function getLoggedInUser() {
   if (MOCK_MODE) return { message: 'demo@example.com' };
+  
+  const response = await client().get('/api/method/frappe.auth.get_logged_user');
+  return response.data;
 }
 
 // ─── Reading Schedules ────────────────────────────────────────────────────────
@@ -55,6 +71,17 @@ export async function getMySchedules() {
       }]);
     }, 1000));
   }
+
+  // Live GET request for Reading Schedule
+  // We'll fetch all active schedules for the user. We assume the frappe backend has 'Reading Schedule'
+  const fields = JSON.stringify(['name', 'schedule_code', 'zone', 'reading_date', 'status', 'assigned_to']);
+  const filters = JSON.stringify([['status', '=', 'Active']]); 
+  
+  const response = await client().get(`/api/resource/Reading Schedule`, {
+    params: { fields, filters }
+  });
+  
+  return response.data.data;
 }
 
 // ─── Water Properties ─────────────────────────────────────────────────────────
@@ -76,6 +103,18 @@ export async function getPropertiesForSchedule(scheduleCode) {
       ]);
     }, 1500));
   }
+  
+  // Live GET request for Water Property
+  const fields = JSON.stringify(['name', 'water_customer', 'property_address', 'meter_type', 'service_connection', 'service_type', 'previous_reading', 'zone', 'route_sequence', 'reading_status']);
+  // If scheduleCode is provided, you might filter by zone or schedule.
+  // For now, we'll fetch all properties or filter properly based on your Frappe DocType setup.
+  const params = { fields };
+  
+  // E.g., if you map properties by zone:
+  // params.filters = JSON.stringify([['zone', '=', scheduleCode.zone]])
+  
+  const response = await client().get(`/api/resource/Water Property`, { params });
+  return response.data.data;
 }
 
 export async function getPropertyDetail(propertyName) {
@@ -88,6 +127,9 @@ export async function getPropertyDetail(propertyName) {
       });
     }, 500));
   }
+  
+  const response = await client().get(`/api/resource/Water Property/${propertyName}`);
+  return response.data.data;
 }
 
 // ─── Meter Readings ───────────────────────────────────────────────────────────
@@ -103,8 +145,26 @@ export async function submitMeterReading(payload) {
       }, 1000);
     });
   }
+  
+  // Live POST request to create a Meter Reading doctype
+  const response = await client().post('/api/resource/Meter Reading', payload);
+  return response.data.data;
 }
 
 export async function attachMeterPhoto({ docName, base64Image, fileName }) {
   if (MOCK_MODE) return Promise.resolve('mock_url');
+  
+  // Post file to Frappe using the /api/method/upload_file endpoint
+  const formData = new URLSearchParams();
+  formData.append('filename', fileName || `photo_${Date.now()}.jpg`);
+  formData.append('filedata', `data:image/jpeg;base64,${base64Image}`);
+  formData.append('doctype', 'Meter Reading');
+  formData.append('docname', docName);
+  formData.append('is_private', 0);
+
+  const response = await client().post('/api/method/upload_file', formData, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  
+  return response.data.message.file_url;
 }
