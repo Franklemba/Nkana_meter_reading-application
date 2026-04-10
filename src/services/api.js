@@ -88,29 +88,63 @@ export async function getMeterReadingSchedule(scheduleName) {
 
 // ─── Water Properties ─────────────────────────────────────────────────────────
 
+async function getWaterMetersByProperty(propertyNames) {
+  assertConfigured();
+  const names = (propertyNames || []).filter(Boolean);
+  if (names.length === 0) return [];
+
+  const CHUNK = 200;
+  const out = [];
+  for (let i = 0; i < names.length; i += CHUNK) {
+    const chunk = names.slice(i, i + CHUNK);
+    try {
+      const r = await client().get(
+        `/api/resource/${encodeDoctype('Water Meter')}?filters=${encodeQueryParamJson([['water_property', 'in', chunk]])}&fields=${encodeQueryParamJson(['*'])}&limit_page_length=2000`
+      );
+      if (r.data?.data) {
+        out.push(...r.data.data);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch water meters for chunk", e);
+    }
+  }
+  return out;
+}
+
 async function listWaterPropertiesWithFilter(filters) {
-  const fields = [
-    'name',
-    'property_address',
-    'latitude',
-    'longitude',
-    'owner_customer',
-    'tenant_customer',
-    'billing_party',
-    'connection_status',
-    'meter_type',
-    'service_connection',
-    'service_type',
-    'previous_reading',
-    'zone',
-    'route_sequence',
-    'reading_status',
-    'water_meter',
-  ];
+  const fields = ['*'];
   const r = await client().get(
     `/api/resource/${encodeDoctype('Water Property')}?filters=${encodeQueryParamJson(filters)}&fields=${encodeQueryParamJson(fields)}&limit_page_length=2000`
   );
-  return r.data?.data || [];
+  
+  const properties = r.data?.data || [];
+  
+  // Also fetch and merge linked Water Meters
+  if (properties.length > 0) {
+    const propertyNames = properties.map(p => p.name);
+    const meters = await getWaterMetersByProperty(propertyNames);
+    const meterByProperty = {};
+    for (const m of meters) {
+      if (m.water_property) {
+        // If there are multiple, usually one is active. We just keep the first one found for now.
+        if (!meterByProperty[m.water_property] || m.status === 'Active') {
+          meterByProperty[m.water_property] = m;
+        }
+      }
+    }
+    
+    for (const p of properties) {
+      const meter = meterByProperty[p.name];
+      if (meter) {
+        p.meter_type = meter.meter_type;
+        p.previous_reading = meter.last_reading || meter.previous_reading || 0;
+        p.water_meter = meter.name;
+        p.meter_serial_no = meter.serial_no;
+      }
+    }
+  }
+  
+  return properties;
 }
 
 export async function getWaterPropertiesByNames(propertyNames) {
@@ -124,6 +158,7 @@ export async function getWaterPropertiesByNames(propertyNames) {
   const out = [];
   for (let i = 0; i < names.length; i += CHUNK) {
     const chunk = names.slice(i, i + CHUNK);
+    // listWaterPropertiesWithFilter now automatically retrieves and merges the meters.
     const rows = await listWaterPropertiesWithFilter([['name', 'in', chunk]]);
     out.push(...rows);
   }

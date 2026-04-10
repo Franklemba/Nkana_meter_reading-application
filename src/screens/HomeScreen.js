@@ -71,8 +71,9 @@ export default function HomeScreen({ navigation }) {
           .map(name => byName[name])
           .filter(Boolean)
           .map(p => ({ ...p, walk_sequence: seqByName[p.name] ?? null }));
-      } catch (_) {
+      } catch (innerErr) {
         // Fallback: older endpoints/fields
+        console.error("Failed Walk-route fetch strategy:", innerErr);
         props = await getPropertiesForSchedule(activeSchedule.schedule_code || activeSchedule.name);
       }
 
@@ -81,15 +82,18 @@ export default function HomeScreen({ navigation }) {
       await saveScheduleCache(activeSchedule, props);
 
     } catch (err) {
-      // Fall back to cached data if offline
+      // Temporarily disabled cache fallback to expose the actual properties fetch error
+      console.error("Fetch Error:", err);
+      /*
       const cached = await loadScheduleCache();
       if (cached.schedule) {
         dispatch({ type: 'SET_SCHEDULE',    payload: cached.schedule });
         dispatch({ type: 'SET_PROPERTIES',  payload: cached.properties });
         setError('Showing cached schedule — working offline.');
       } else {
+      */
         setError(err.message || 'Failed to load schedule. Check your connection.');
-      }
+      // }
     } finally {
       setLoading(false);
       setRefreshing(false);
